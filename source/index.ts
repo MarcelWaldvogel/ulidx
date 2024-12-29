@@ -7,7 +7,8 @@ export {
     monotonicFactory,
     ulid,
     ulidToUUID,
-    uuidToULID
+    uuidToULID,
+    randomChar
 } from "./ulid.js";
 export * from "./constants.js";
 export * from "./types.js";

@@ -14,7 +14,8 @@ import {
     monotonicFactory,
     ulid,
     ulidToUUID,
-    uuidToULID
+    uuidToULID,
+    randomChar
 } from "../../dist/node/index.js";
 
 describe("ulid", function () {
@@ -133,8 +134,8 @@ describe("ulid", function () {
                 "01ARYZ6S41TSV4RRFFQ69G5FAV"
             );
         });
-
-        it("should return the correct ULID with hyphens removed", function () {
+        //github.com/perry-mitchell/ulidx/blob/main/source/ulid.ts#L89
+        https: it("should return the correct ULID with hyphens removed", function () {
             expect(fixULIDBase32("01ARYZ6-S41TSV4RRF-FQ69G5FAV")).to.equal(
                 "01ARYZ6S41TSV4RRFFQ69G5FAV"
             );
@@ -252,6 +253,40 @@ describe("ulid", function () {
             expect(() => {
                 uuidToULID("whatever");
             }).to.throw(/Invalid UUID/);
+        });
+    });
+
+    describe("randomness estimation", function () {
+        it("should create random values", function () {
+            const currentPRNG = detectPRNG();
+            const frequencies = {};
+            const iterations = 32 * 1000;
+
+            for (let i = 0; i < iterations; i++) {
+                const r = currentPRNG() * 32;
+                if (r in frequencies) {
+                    frequencies[r]++;
+                } else {
+                    frequencies[r] = 1;
+                }
+            }
+            //console.error(frequencies);
+        });
+        it("should result in similar character frequencies", function () {
+            const iterations = 32 * 1000;
+            const currentPRNG = detectPRNG();
+            const ENCODING = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+            const frequencies = {};
+            [...ENCODING].forEach(ch => (frequencies[ch] = 0));
+            for (let i = 0; i < iterations; i++) {
+                frequencies[randomChar(currentPRNG)]++;
+            }
+            //console.error(frequencies);
+            const min = Math.min(...Object.values(frequencies));
+            const max = Math.max(...Object.values(frequencies));
+            console.error(`Character frequencies range from ${min} to ${max}`);
+            expect(min).to.be.at.least((iterations / 32) * 0.9);
+            expect(max).to.be.at.most((iterations / 32) * 1.1);
         });
     });
 });
