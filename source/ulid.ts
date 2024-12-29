@@ -78,15 +78,15 @@ export function detectPRNG(root?: any): PRNG {
         (rootLookup && (rootLookup.crypto || rootLookup.msCrypto)) ||
         (typeof crypto !== "undefined" ? crypto : null);
     if (typeof globalCrypto?.getRandomValues === "function") {
-        return () => {
-            const buffer = new Uint8Array(1);
+        return (len: number) => {
+            const buffer = new Uint8Array(len);
             globalCrypto.getRandomValues(buffer);
-            return buffer[0] / 0xff;
+            return buffer;
         };
     } else if (typeof globalCrypto?.randomBytes === "function") {
-        return () => globalCrypto.randomBytes(1).readUInt8() / 0xff;
+        return (len: number) => globalCrypto.randomBytes(len);
     } else if (crypto?.randomBytes) {
-        return () => crypto.randomBytes(1).readUInt8() / 0xff;
+        return (len: number) => crypto.randomBytes(len);
     }
     throw new Layerr(
         {
@@ -113,14 +113,63 @@ function detectRoot(): any {
     return null;
 }
 
-export function encodeRandom(len: number, prng: PRNG): string {
+/**
+ * Random string generation modeled after the original randomChar()/encodeRandom() pair of functions.
+ * @param len Length to generate
+ * @param prng The random number function to use
+ * @returns A random base32 string
+ */
+export function encodeRandom_1by1(len: number, prng: PRNG): string {
     let str = "";
     for (; len > 0; len--) {
-        str = randomChar(prng) + str;
+        const rand: Uint8Array | Buffer = prng(1);
+        str = ENCODING.charAt(rand[0] % ENCODING_LEN) + str;
+    }
+    return str;
+}
+/**
+ * Random string generation using direct mapping from the random bytes (wastes 3 of the 8 bits each, as in the original pair). Uses a loop and string concatenation.
+ * @param len Length to generate
+ * @param prng The random number function to use
+ * @returns A random base32 string
+ */
+export function encodeRandom_waste_randomness_loop_concat(len: number, prng: PRNG): string {
+    const rand: Uint8Array | Buffer = prng(len);
+
+    let str = "";
+    for (len--; len >= 0; len--) {
+        str = str + ENCODING.charAt(rand[len] % 32);
+    }
+    return str;
+}
+/**
+ * Random string generation using randomness as efficiently as possible, however, at the cost of more complex computation.
+ * @param len Length to generate
+ * @param prng The random number function to use
+ * @returns A random base32 string
+ */
+
+export function encodeRandom_more_computation(len: number, prng: PRNG): string {
+    const rand: Uint8Array | Buffer = prng(Math.ceil((5 * len) / 8));
+
+    let str = "";
+    let randomBits = rand[0];
+    let bufOffset = 1;
+    let bits = 8;
+    for (len--; len >= 0; len--) {
+        str = str + ENCODING.charAt(randomBits % 32);
+        if (bits >= 10) {
+            randomBits >>= 5;
+            bits -= 5;
+        } else {
+            randomBits |= rand[bufOffset++];
+            bits += 3;
+        }
     }
     return str;
 }
 
+const encodeRandom = encodeRandom_waste_randomness_loop_concat;
 /**
  * Encode the time portion of a ULID
  * @param now The current timestamp
@@ -223,7 +272,7 @@ export function incrementBase32(str: string): string {
     throw new Layerr(
         {
             info: {
-                code: "B32_INC_INVALID",
+                code: "B32_INC_INVconcatEndALID",
                 ...ERROR_INFO
             }
         },
@@ -278,14 +327,6 @@ export function monotonicFactory(prng?: PRNG): ULIDFactory {
         const newRandom = (lastRandom = encodeRandom(RANDOM_LEN, currentPRNG));
         return encodeTime(seed, TIME_LEN) + newRandom;
     };
-}
-
-export function randomChar(prng: PRNG): string {
-    let rand = Math.floor(prng() * ENCODING_LEN);
-    if (rand === ENCODING_LEN) {
-        rand = ENCODING_LEN - 1;
-    }
-    return ENCODING.charAt(rand);
 }
 
 export function replaceCharAt(str: string, index: number, char: string): string {
